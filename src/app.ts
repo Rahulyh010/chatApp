@@ -1,9 +1,10 @@
-import express, { json } from "express";
-import http from "http";
-import { Server, Socket } from "socket.io";
-import { mongodbConnect } from "./mongodb";
 import cors from "cors";
 import { config } from "dotenv";
+import express, { json } from "express";
+import http from "http";
+import { Server, type Socket } from "socket.io";
+
+import { mongodbConnect } from "./mongodb";
 
 config();
 const app = express();
@@ -33,17 +34,20 @@ io.on("connection", (socket: Socket) => {
   console.log(rooms);
   console.log("User connected:", socket.id);
 
-  socket.on("create room", ({ user, doctor }) => {
-    console.log(doctor, user);
-    let roomKey = doctor + "-" + user;
+  socket.on(
+    "create room",
+    ({ user, doctor }: { user: string; doctor: string }) => {
+      console.log(doctor, user);
+      const roomKey = doctor + "-" + user;
 
-    if (!rooms[roomKey]) {
-      rooms[roomKey] = user + "-" + doctor;
-      console.log("room created");
-    } else {
-      console.log("room already exists");
+      if (!rooms[roomKey]) {
+        rooms[roomKey] = user + "-" + doctor;
+        console.log("room created");
+      } else {
+        console.log("room already exists");
+      }
     }
-  });
+  );
 
   socket.on(
     "joinRoom",
@@ -83,7 +87,7 @@ io.on("connection", (socket: Socket) => {
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
-    let key = socket.id;
+    const key = socket.id;
     delete rooms.key;
     console.log("delete event executed");
   });
@@ -91,6 +95,10 @@ io.on("connection", (socket: Socket) => {
 
 server.listen(process.env.PORT, async () => {
   await mongodbConnect();
+
+  if (!process.env.PORT) {
+    return;
+  }
 
   console.log(`Server is running on http://localhost:${process.env.PORT}`);
 });
