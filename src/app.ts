@@ -4,6 +4,7 @@ import express, { json } from "express";
 import http from "http";
 import { Server, type Socket } from "socket.io";
 
+import Allrouter from "./api/routes";
 import { mongodbConnect } from "./mongodb";
 
 config();
@@ -89,9 +90,11 @@ io.on("connection", (socket: Socket) => {
     console.log("User disconnected:", socket.id);
     const key = socket.id;
     delete rooms.key;
-    console.log("delete event executed");
+    console.log("delete event executed", key);
   });
 });
+
+app.use("/api", Allrouter);
 
 server.listen(process.env.PORT, async () => {
   await mongodbConnect();
