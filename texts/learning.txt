@@ -1,0 +1,183 @@
+import express from "express";
+import http from 'http';
+import { Server } from "socket.io";
+import path from 'path';
+import dotenv from 'dotenv';
+import cors from "cors";
+import { mongodbConnect } from "./mongodb.js";
+
+dotenv.config();
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
+});
+
+const corsOptions = {
+  origin: "http://localhost:3000", // Replace with your frontend domain
+};
+
+app.use(cors(corsOptions));
+const rooms = {};
+
+app.get('/', function (req, res) {
+  const indexPath = path.join(__dirname, 'index.html');
+  res.sendFile(indexPath); // Send the index.html file
+});
+
+io.on('connection', (socket) => {
+  console.log('user connected');
+  const roomID = Date.now() + Math.floor(Math.random() * 1000) + "id";
+
+  console.log(roomID);
+  socket.on('sendName', (username) => {
+    io.to(rooms[socket.id]).emit('sendName', username);
+  });
+
+  socket.on('send message', (chat) => {
+    io.to(rooms[socket.id]).emit('send message', chat);
+  });
+
+  socket.on('joinRoom', (roomID) => {
+    socket.join(roomID);
+    console.log(`Socket ${socket.id} joined room ${roomID}`);
+    rooms[socket.id] = roomID;
+    console.log(rooms);
+  });
+
+  socket.on('disconnect', () => {
+    delete rooms[socket.id];
+    console.log('user disconnected');
+  });
+});
+
+const port = process.env.PORT || 8080;
+server.listen(port,async  function () {
+await  mongodbConnect();
+  console.log(`Listening on port ${port}`);
+});
+
+
+
+///////////////////
+
+import express, { json } from "express";
+import http from "http";
+import { Server, Socket } from "socket.io";
+import { mongodbConnect } from "./mongodb";
+import cors from "cors";
+import router from "./routes";
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
+const corsOptions = {
+  origin: "*", // Replace with your frontend domain
+};
+
+app.use(cors(corsOptions));
+// Define the types for participants and rooms
+type Participant = string;
+interface Room {
+  participants: Participant[];
+  messages: { user: Participant; message: string }[];
+}
+
+// Initialize a data structure to store rooms
+const rooms: { [key: string]: Room } = {};
+
+app.use(json());
+app.use("/api", router);
+
+io.on("connection", (socket: Socket) => {
+  console.log("User connected:", socket.id);
+
+  // Function to create or get the room for a user and doctor
+  function createOrGetRoom(user: Participant, doctor: Participant): string {
+    const participants = [user, doctor];
+    const roomKey = participants.sort().join("-"); // Generate a unique key for the room
+
+    if (!rooms[roomKey]) {
+      rooms[roomKey] = {
+        participants,
+        messages: [],
+      };
+    }
+
+    return roomKey;
+  }
+
+  // Function to check if a user and doctor already have a room
+  function hasRoom(user: Participant, doctor: Participant): boolean {
+    const participants = [user, doctor];
+    const roomKey = participants.sort().join("-");
+    return !!rooms[roomKey];
+  }
+
+  // Event when a user wants to create or join a room with a doctor
+  socket.on(
+    "joinRoom",
+    ({ user, doctor }: { user: Participant; doctor: Participant }) => {
+      const roomKey = hasRoom(user, doctor)
+        ? createOrGetRoom(user, doctor)
+        : null;
+      if (roomKey) {
+        // Join the room with the unique roomKey
+        socket.join(roomKey);
+        console.log(`${user} joined room with ${doctor}`);
+      } else {
+        console.log(`${user} and ${doctor} already have a room`);
+      }
+    }
+  );
+
+  // Event when the user sends a message to the doctor in the room
+  socket.on(
+    "sendMessage",
+    ({
+      user,
+      doctor,
+      message,
+    }: {
+      user: Participant;
+      doctor: Participant;
+      message: string;
+    }) => {
+      const roomKey = hasRoom(user, doctor)
+        ? createOrGetRoom(user, doctor)
+        : null;
+      if (roomKey) {
+        // Add the message to the room
+        rooms[roomKey].messages.push({ user, message });
+        // Broadcast the message to everyone in the room
+        io.to(roomKey).emit("messageReceived", { user, message });
+      } else {
+        console.log(`${user} and ${doctor} do not have a room`);
+      }
+    }
+  );
+
+  // Clean up room when the user disconnects
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+    // Clean up rooms and messages if necessary
+    // You can add additional logic here to handle room deletion
+  });
+});
+
+const port = 3001;
+server.listen(port, async () => {
+  await mongodbConnect();
+  console.log(`Server is running on http://localhost:${port}`);
+});
+
