@@ -30,6 +30,7 @@ export async function verifyJwt(
 
     const payload = jwt.verify(token, JWT_SECRET_KEY);
     console.log(payload);
+    next();
   } catch (error) {
     return res.status(500).json({
       error,

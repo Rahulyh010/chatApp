@@ -4,6 +4,7 @@ import { type Request, type Response } from "express";
 import { User } from "../../../database/models/user.model";
 import { generateTokens } from "../../../utils/helpers/generate-tokens";
 import { type TUserValidator } from "../../validator/user";
+import { type TUserSignInValidator } from "../../validator/user/user.validator";
 
 export async function userSignup(req: Request, res: Response) {
   try {
@@ -52,6 +53,101 @@ export async function userSignup(req: Request, res: Response) {
     }
   } catch (error) {
     return res.status(500).json({
+      reason: "internal error",
+      error,
+    });
+  }
+}
+
+export async function userSignIn(req: Request, res: Response) {
+  try {
+    const { password, phoneNo, email } =
+      req.body as TUserSignInValidator["body"];
+
+    let userConfirmed = false;
+
+    if (phoneNo) {
+      const user = await User.findOne({ phoneNo });
+
+      if (!user) {
+        return res.status(404).json({
+          reason: "there doesn't exist any user with this number",
+        });
+      }
+
+      if (!user.password) {
+        return res.status(400).json({
+          reason: "password is undefined",
+        });
+      }
+      bcrypt.compare(password, user.password, (err, result) => {
+        if (err) {
+          return res.status(400).json({
+            reason: "wrong password",
+          });
+        } else {
+          console.log("good to go", result);
+          userConfirmed = true;
+        }
+      });
+
+      const tokens = generateTokens(phoneNo);
+      if (!tokens) {
+        return res.status(400).json({
+          reason: "tokens not genrated due to internal errors",
+        });
+      }
+
+      if (userConfirmed) {
+        return res.status(200).json({
+          data: tokens,
+          message: "sucessfully logged in",
+        });
+      }
+    }
+    // email
+
+    if (email) {
+      const user = await User.findOne({ email });
+
+      if (!user) {
+        return res.status(404).json({
+          reason: "there doesn't exist any user with this number",
+        });
+      }
+
+      if (!user.password) {
+        return res.status(400).json({
+          reason: "password is undefined",
+        });
+      }
+      bcrypt.compare(password, user.password, (err, result) => {
+        if (err) {
+          return res.status(400).json({
+            reason: "wrong password",
+          });
+        } else {
+          console.log("good to go", result);
+          userConfirmed = true;
+        }
+      });
+
+      const tokens = generateTokens(email);
+      if (!tokens) {
+        return res.status(400).json({
+          reason: "tokens not genrated due to internal errors",
+        });
+      }
+
+      if (userConfirmed) {
+        return res.status(200).json({
+          data: tokens,
+          message: "sucessfully logged in",
+        });
+      }
+    }
+  } catch (error) {
+    res.status(500).json({
       reason: "internal error",
       error,
     });
