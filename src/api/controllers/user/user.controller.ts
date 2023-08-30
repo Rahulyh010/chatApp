@@ -1,155 +1,159 @@
 import bcrypt from "bcrypt";
 import { type Request, type Response } from "express";
 
-import { User } from "../../../database/models/user.model";
-import { generateTokens } from "../../../utils/helpers/generate-tokens";
-import { type TUserValidator } from "../../validator/user";
-import { type TUserSignInValidator } from "../../validator/user/user.validator";
+import env from "@/config/env";
+import { Otp } from "@/database/models/otp";
+import { User } from "@/database/models/user.model";
+import { sendEmail } from "@/utils/helpers/email-sender";
+import { generateTokens } from "@/utils/helpers/generate-tokens";
+import { generateOTP } from "@/utils/helpers/otp-generater";
+import responseHelper from "@/utils/helpers/response-helper";
 
 export async function userSignup(req: Request, res: Response) {
   try {
-    const { password, email, phoneNo } = req.body as TUserValidator["body"];
+    const { email } = req.body;
+    console.log(email);
+    const secureOTP: string = generateOTP(6);
 
-    console.log(password, email, phoneNo);
-    const hashedPassword = await bcrypt.hash(password, 5);
+    const otp: string = secureOTP;
 
-    if (phoneNo) {
-      const obj = {
-        phoneNo,
-        password: hashedPassword,
-      };
+    const saltRounds = 10; // Number of salt rounds to use
+    const hashedPassword = await bcrypt.hash(otp, saltRounds);
+    const newOtp = new Otp({ otp: hashedPassword, email });
 
-      const data = new User(obj);
-      await data.save();
-
-      const token = generateTokens(phoneNo);
-
-      if (!token) {
-        return res.status(400).json({
-          err: "token not generated",
-        });
-      }
-
-      return res.status(200).json({
-        data: token,
-        message: "Succesfully signed up",
-      });
-    }
-
-    if (email) {
-      const obj = {
-        email,
-        password: hashedPassword,
-      };
-
-      const data = new User(obj);
-      await data.save();
-
-      const token = generateTokens(email);
-      return res.status(200).json({
-        data: token,
-        message: "Succesfully signed up",
-      });
-    }
+    const mailOptions = {
+      to: email,
+      from: env.MY_EMAIL,
+      subject: "Account Verification",
+      html: `<div style="text-align: center">
+      <img
+        src="https://img.freepik.com/premium-vector/cute-monsters-group-set-funny-cute-monsters-aliens-fantasy-animals-gretting-card-shirts-hand-drawn-line-art-cartoon-vector-illustration_40453-2443.jpg?w=900"
+        alt=""
+      />
+      <h1>Hello!!!!</h1>
+      <p>Welcome to hi👋 app,secure fast & Indian app❣</p>
+      <h2>Your Verification code </h2>
+      <h1>${otp}</h1>
+    </div>`,
+    };
+    const smtp = sendEmail();
+    await smtp?.sendMail(mailOptions);
+    await newOtp.save();
+    return res.status(200).json(
+      responseHelper({
+        req,
+        code: "00009",
+      })
+    );
   } catch (error) {
-    return res.status(500).json({
-      reason: "internal error",
-      error,
-    });
+    return res.status(500).json(
+      responseHelper({
+        req,
+        code: "00008",
+        err: error,
+      })
+    );
   }
 }
 
-export async function userSignIn(req: Request, res: Response) {
+export async function otpVerification(req: Request, res: Response) {
   try {
-    const { password, phoneNo, email } =
-      req.body as TUserSignInValidator["body"];
-
-    let userConfirmed = false;
-
-    if (phoneNo) {
-      const user = await User.findOne({ phoneNo });
-
-      if (!user) {
-        return res.status(404).json({
-          reason: "there doesn't exist any user with this number",
-        });
+    const { otp, email } = req.body;
+    const update = await Otp.findOneAndUpdate(
+      { email },
+      { $inc: { attempts: 1 } },
+      {
+        new: true,
       }
-
-      if (!user.password) {
-        return res.status(400).json({
-          reason: "password is undefined",
-        });
-      }
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (err) {
-          return res.status(400).json({
-            reason: "wrong password",
-          });
-        } else {
-          console.log("good to go", result);
-          userConfirmed = true;
-        }
-      });
-
-      const tokens = generateTokens(phoneNo);
-      if (!tokens) {
-        return res.status(400).json({
-          reason: "tokens not genrated due to internal errors",
-        });
-      }
-
-      if (userConfirmed) {
-        return res.status(200).json({
-          data: tokens,
-          message: "sucessfully logged in",
-        });
-      }
+    );
+    if (!update) {
+      return res.status(404).json(
+        responseHelper({
+          req,
+          code: "10002",
+        })
+      );
     }
-    // email
+    if (+update?.attempts > 5) {
+      return res.status(400).json(
+        responseHelper({
+          req,
+          code: "10003",
+        })
+      );
+    }
+    // const data = await Otp.findOne({ email });
+    if (!update?.otp) {
+      return res.status(500).json(
+        responseHelper({
+          req,
+          code: "00008",
+        })
+      );
+    }
+    const camparePassword = await bcrypt.compare(otp, update?.otp);
+    // const hashedPassword = await bcrypt.hash(otp, );
+    if (camparePassword) {
+      await Otp.deleteOne({ email });
 
-    if (email) {
-      const user = await User.findOne({ email });
-
-      if (!user) {
-        return res.status(404).json({
-          reason: "there doesn't exist any user with this number",
-        });
-      }
-
-      if (!user.password) {
-        return res.status(400).json({
-          reason: "password is undefined",
-        });
-      }
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (err) {
-          return res.status(400).json({
-            reason: "wrong password",
-          });
-        } else {
-          console.log("good to go", result);
-          userConfirmed = true;
-        }
-      });
-
-      const tokens = generateTokens(email);
-      if (!tokens) {
-        return res.status(400).json({
-          reason: "tokens not genrated due to internal errors",
-        });
-      }
-
-      if (userConfirmed) {
-        return res.status(200).json({
-          data: tokens,
-          message: "sucessfully logged in",
-        });
-      }
+      return res.status(200).json(
+        responseHelper({
+          req,
+          code: "10000",
+        })
+      );
+    } else {
+      return res.status(503).json(
+        responseHelper({
+          req,
+          code: "10000",
+        })
+      );
     }
   } catch (error) {
-    res.status(500).json({
-      reason: "internal error",
-      error,
+    return res.status(500).json(
+      responseHelper({
+        req,
+        code: "00008",
+        err: error,
+      })
+    );
+  }
+}
+
+export async function accountSetup(req: Request, res: Response) {
+  try {
+    const { username, bio, email, phone, device } = req.body;
+    const data = new User({ username, bio, email, phone, device });
+    await data.save();
+    const tokens = generateTokens({
+      _id: data._id.toString(),
+      email,
+      phone,
+      username,
     });
+    if (data) {
+      return res.status(200).json(
+        responseHelper({
+          req,
+          code: "10000",
+          data: { data, tokens },
+        })
+      );
+    }
+    return res.status(400).json(
+      responseHelper({
+        req,
+        code: "10004",
+      })
+    );
+  } catch (error) {
+    return res.status(500).json(
+      responseHelper({
+        req,
+        code: "00008",
+        err: error,
+      })
+    );
   }
 }

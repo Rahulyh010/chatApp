@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { type Application } from "express";
+import express, { type Application, json } from "express";
 import helmet from "helmet";
 
 import router from "../api/routes";
@@ -26,11 +26,10 @@ export default async function (app: Application) {
       limit: "10mb",
     })
   );
-
+  app.use(json());
   app.use(express.urlencoded({ extended: true }));
 
   app.use(helmet());
-  // app.use(compression());
   app.use(cors());
 
   app.get("/", async (req, res) => {

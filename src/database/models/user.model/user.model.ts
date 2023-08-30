@@ -1,25 +1,18 @@
 import { type InferSchemaType, model, Schema } from "mongoose";
 
-const loggedDevices = new Schema({
-  deviceName: { type: String, required: true },
-  loggedStatus: { type: Boolean, required: true },
-});
-
 const userSchema = new Schema({
   _id: { type: Schema.Types.ObjectId, auto: true },
   name: { type: String, default: null },
   about: { type: String, default: null },
-  userName: { type: String, default: null },
-  avatar: { type: Schema.Types.ObjectId, default: null },
-  phoneNo: { type: Number, default: null, unique: true },
-  phoneNoVerfied: { type: Boolean, default: false },
-  password: { type: String },
+  username: { type: String, default: null },
+  avatar: { type: Schema.Types.ObjectId, default: null, ref: "File" },
   email: { type: String, default: null, unique: true },
-  emailVerfied: { type: Boolean, default: false },
-  loggedDevices: { type: [loggedDevices], default: null },
+  phone: { type: String, required: true, unique: true, length: 10 },
+  device: { type: String, default: null, unique: true },
   country: { type: String, enum: ["IN"], default: "IN" },
-  settings: { type: Schema.Types.ObjectId, default: null },
-  chats: { type: [Schema.Types.ObjectId], default: null },
+  settings: { type: Schema.Types.ObjectId, default: null, ref: "Setting" },
+  chats: { type: [Schema.Types.ObjectId], default: null, ref: "Room" },
+  twofactorAuthentication: { type: Boolean, default: false },
 });
 
 type TUserSchema = InferSchemaType<typeof userSchema>;

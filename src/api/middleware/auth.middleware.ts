@@ -1,6 +1,8 @@
 import { type NextFunction, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 
+import env from "@/config/env";
+
 import { JWT_SECRET_KEY } from "../../utils/constants/env";
 export async function verifyJwt(
   req: Request,
@@ -35,5 +37,14 @@ export async function verifyJwt(
     return res.status(500).json({
       error,
     });
+  }
+}
+
+export function verifyToken(token: string): TokenPayload | null {
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET_KEY) as TokenPayload;
+    return decoded;
+  } catch (err) {
+    return null;
   }
 }
